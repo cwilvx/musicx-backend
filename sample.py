@@ -1,11 +1,9 @@
-import os
 from pathlib import Path
 
 from mutagen.mp3 import MP3
 from mutagen.mp3 import HeaderNotFoundError
 
 from mutagen.flac import FLAC, FLACNoHeaderError, MutagenError
-# import mutagen.flac.error as error
 
 music_dir = "/home/cwilvx/Music"
 
