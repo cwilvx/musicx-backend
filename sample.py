@@ -27,10 +27,6 @@ def get_tags():
             except(HeaderNotFoundError, KeyError):
                 print("No tags found")
 
-# get_tags()
-                # print(tags['TALB']
-# get_tags()
-
 def get_flac_tags():
     for folder in music_dir:
         dir = music_dir + folder

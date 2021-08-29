@@ -1,10 +1,66 @@
 import os
 from pathlib import Path
 from mutagen.mp3 import MP3
-from mutagen.flac import FLAC
+from mutagen.flac import FLAC, FLACNoHeaderError, MutagenError
 
 from flask import Flask
 from flask_cors import CORS
+
+
+def getMP3Tags(full_path, audio, array):
+    absolute_path = full_path.replace(music_dir,'')
+
+    try:
+        artist = audio['TPE1'][0]
+    except IndexError:
+        artist = 'Unknown'
+
+    try:
+        title = audio['TIT2'][0]
+    except IndexError:
+        title = 'Unknown'
+
+    try:
+        album = audio['TALB'][0]
+    except IndexError:
+        album = "Unknown"
+
+    try:
+        genre = audio['TCON'][0]
+    except:
+        genre = 'Unknown'
+
+    tags = {
+        'filepath': absolute_path,
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'genre': genre,
+        'length': audio.info.length,
+        'bitrate': audio.info.bitrate,
+    }
+    array.append(tags)
+
+
+def getFLACTags(full_path, audio, array):
+    absolute_path = full_path.replace(music_dir,'')
+    tags = {
+        'filepath': absolute_path,
+        'title': audio['title'][0],
+        'artist': audio['artist'][0],
+        'album': audio['album'][0],
+        'genre': audio['genre'][0],
+        'length': audio.info.length,
+        'bitrate': audio.info.bitrate,
+    }
+    array.append(tags)
+
+
+def noTags(path, array):
+    full_path = path.resolve().as_posix()
+    absolute_path = full_path.replace(music_dir,'')
+
+    array.append(absolute_path)
 
 
 app = Flask(__name__)
@@ -26,60 +82,28 @@ def get_folders():
 @app.route("/<folder>")
 def get_files(folder):
     dir = music_dir + folder
-    print(dir)
-
-    files = []
+    folder_files = []
 
     for path in Path(dir).rglob('*.flac'):
-        # files.append(path.resolve().as_posix())
         try:
             audio = FLAC(path)
-            tags = {
-                'filepath': path.resolve().as_posix(),
-                'title': audio['title'][0],
-                'artist': audio['artist'][0],
-                'album': audio['album'][0],
-                'genre': audio['genre'][0],
-                # 'track': audio['tracknumber'][0],
-                # 'year': audio['date'][0],
-                'length': audio.info.length,
-                'bitrate': audio.info.bitrate,
-            }
-            files.append(tags)
-        except() as e:
-            print(e)
-            tags = {
-                'title': 'Unknown',
-                'artist': 'Unknown',
-                'album': 'Unknown',
-                'genre': 'Unknown',
-                # 'track': 'Unknown',
-                # 'year': 'Unknown',
-                'bitrate': 'Unknown',
-            }
-            files.append(tags)
+            full_path = path.resolve().as_posix()
+            getFLACTags(full_path, audio, folder_files)
+
+        except(KeyError, MutagenError):
+            noTags(path, folder_files)
 
     for path in Path(dir).rglob('*.mp3'):
-        files.append(path.name)
-        
-    print(files)
-    return {'all_files': files}
-
-
-# @app.route("/tags")
-# def get_tags():
-#     folders = os.listdir(music_dir)
-
-#     for folder in folders:
-#         dir = music_dir + folder
-
-#         for path in Path(dir).rglob('*.flac'):
-#             print(path.name)
-#             tags = MP3(path)
-#             return tags
+        try:
+            audio = MP3(path)
+            full_path = path.resolve().as_posix()
+            getMP3Tags(full_path, audio, folder_files)
+        except(KeyError):
+            noTags(path)
     
-# get_tags()
+    count = len(folder_files)
+    return {'count': count,'all_files': folder_files}
 
 if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=8080, debug=True)
+    app.run(host='127.0.0.1', port=8080, debug=False)
 
