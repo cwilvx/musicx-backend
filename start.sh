@@ -1,5 +1,8 @@
 export PORT=8009
 export music_dir="/home/cwilvx/Music/"
 
-# python server.py
-python app.py
+export FLASK_APP=app
+export FLASK_DEBUG=1
+export FLASK_RUN_PORT=8080
+
+flask run

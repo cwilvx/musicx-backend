@@ -8,6 +8,7 @@ flask = "*"
 tk = "*"
 flask-cors = "*"
 mutagen = "*"
+pymongo = "*"
 
 [dev-packages]
 

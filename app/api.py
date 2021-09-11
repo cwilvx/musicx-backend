@@ -1,17 +1,24 @@
 import os
+import hashlib
 from pathlib import Path
+import urllib
+
 from mutagen.mp3 import MP3
-from mutagen.flac import FLAC, FLACNoHeaderError, MutagenError
+from mutagen.flac import FLAC, MutagenError
 
-from flask import Flask
-from flask_cors import CORS
+from app.models import Folders
 
+from flask import Blueprint
+
+bp = Blueprint('api', __name__, url_prefix='')
 
 def getMP3Tags(full_path, audio, array):
     absolute_path = full_path.replace(music_dir,'')
 
     try:
-        artist = audio['TPE1'][0]
+        # artist = audio['TPE1'][0]
+        artist = audio.getall('artist')[0]
+        print(artist)
     except IndexError:
         artist = 'Unknown'
 
@@ -63,25 +70,39 @@ def noTags(path, array):
     array.append(absolute_path)
 
 
-app = Flask(__name__)
-CORS(app)
-
 music_dir = os.environ.get("music_dir")
 PORT = os.environ.get("PORT")
 
-@app.route("/")
+
+@bp.route('/update_folders')
+def index():
+
+    return "Hello, World!"
+
+@bp.route("/")
 def get_folders():
     folders = os.listdir(music_dir)
+    folders_array = []
+
+    for folder in folders:
+        folder_obj = {
+            'name': folder,
+            'url': urllib.parse.quote_plus(folder),
+        }
+
+        folders_array.append(folder_obj)
+
     return {
-        'home_folder': music_dir,
         'server_port': 'http://localhost:{}'.format(PORT),
-        'all_folders': folders
+        'all_folders': folders_array
         }
 
 
-@app.route("/<folder>")
+@bp.route("/<folder>")
 def get_files(folder):
-    dir = music_dir + folder
+    folder_name = urllib.parse.unquote_plus(folder)
+    dir = music_dir + folder_name
+
     folder_files = []
 
     for path in Path(dir).rglob('*.flac'):
@@ -89,6 +110,7 @@ def get_files(folder):
             audio = FLAC(path)
             full_path = path.resolve().as_posix()
             getFLACTags(full_path, audio, folder_files)
+            print(audio['artist'])
 
         except(KeyError, MutagenError):
             noTags(path, folder_files)
@@ -102,8 +124,4 @@ def get_files(folder):
             noTags(path)
     
     count = len(folder_files)
-    return {'count': count,'all_files': folder_files}
-
-if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=8080, debug=False)
-
+    return {'count': count,'all_files': folder_files, 'folder_name': folder_name}
