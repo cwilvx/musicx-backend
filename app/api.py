@@ -185,7 +185,7 @@ def get_folders():
     folders_array = []
 
     for folder in folders:
-        if os.path.isdir(music_dir + folder):
+        if os.path.isdir(music_dir + folder) and folder.startswith('.') == False:
             folder_obj = {
                 'name': folder,
                 'url': urllib.parse.quote(folder),
@@ -217,10 +217,11 @@ def get_folder_artists(folder):
 
     songs = all_songs_instance.find_songs_by_folder(folder_name)
     songs_array = convert_to_json(songs)
+    without_duplicates = remove_duplicates(songs_array)
 
     artists = []
 
-    for song in songs_array:
+    for song in without_duplicates:
         this_artists = song['artists']
 
         for artist in this_artists:
