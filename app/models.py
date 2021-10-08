@@ -35,21 +35,25 @@ class Artists(Mongo):
         return self.collection.find_one({'_id': ObjectId(artist_id)})
 
     def find_artists_by_name(self, query):
-        return self.collection.find({'name': query})
+        return self.collection.find({'name': {'$regex': query, '$options': 'i'}})
+
 
 class AllSongs(Mongo):
     def __init__(self):
         super(AllSongs, self).__init__('ALL_SONGS')
         self.collection = self.db['ALL_SONGS']
+
+    def drop_db(self):
+        self.collection.drop()
        
     def insert_song(self, song_obj):
-        self.collection.insert_one(song_obj)
+        self.collection.update(song_obj, song_obj, upsert=True)
 
     def find_song_by_title(self, query):
-        # self.collection.create_index([('title', pymongo.TEXT)])
+        self.collection.create_index([('title', pymongo.TEXT)])
         return self.collection.find({'title': {'$regex': query, '$options': 'i'}})
 
-    def find_song_by_album(self, query):
+    def find_songs_by_album(self, query):
         return self.collection.find({'album': {'$regex': query, '$options': 'i'}})
 
     def get_all_songs(self):
@@ -58,4 +62,8 @@ class AllSongs(Mongo):
     def find_songs_by_folder(self, query):
         return self.collection.find({'folder': query})
 
-        
+    def find_songs_by_artist(self, query):
+        return self.collection.find({'artists': {'$regex': query, '$options': 'i'}})
+
+    def find_songs_by_album_artist(self, query):
+        return self.collection.find({'album_artist': {'$regex': query, '$options': 'i'}})

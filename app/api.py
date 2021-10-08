@@ -29,14 +29,24 @@ PORT = os.environ.get("PORT")
 
 def getTags(full_path, audio, image_path, folder):
     try:
-        artist = audio['artist'][0]
+        artists = audio['artist'][0]
     except KeyError:
         try:
-            artist = audio['TPE1'][0]
+            artists = audio['TPE1'][0]
         except:
-            artist = 'Unknown'
+            artists = 'Unknown'
     except IndexError:
-        artist = 'Unknown'
+        artists = 'Unknown'
+
+    try:
+        album_artist = audio['albumartist'][0]
+    except KeyError:
+        try:
+            album_artist = audio['TPE2'][0]
+        except:
+            album_artist = 'Unknown'
+    except IndexError:
+        album_artist = 'Unknown'
 
     try:
         title = audio['title'][0]
@@ -67,16 +77,13 @@ def getTags(full_path, audio, image_path, folder):
             genre = "Unknown"
     except IndexError:
         genre = "Unknown"
-    artists_array = []
-
-    for artist in artist.split(', '):
-        artists_array.append(artist)
 
     tags = {
         'filepath': full_path.replace(music_dir, ''),
         'folder': folder,
         'title': title,
-        'artists': artists_array,
+        'artists': artists,
+        'album_artist': album_artist,
         'album': album,
         'genre': genre,
         'length': round(audio.info.length),
@@ -91,24 +98,15 @@ def convert_to_json(array):
 
     for song in array:
         json_song = json.dumps(song, default=json_util.default)
-        songs.append(json.loads(json_song))
+        loaded_song = json.loads(json_song)
+        del loaded_song['_id']
+
+        songs.append(loaded_song)
 
     return songs
 
 
 def remove_duplicates(array):
-    if len(array) != 0 and len(array) != 1:
-        index = 1
-        test_song = array[index]
-    else:
-        index = 0
-
-    for song in array:
-        if index < len(array) and len(array) != 0 and len(array) != 1:
-            if song['title'] == test_song['title'] and song['album'] == test_song['album'] and song['artists'] == test_song['artists']:
-                array.remove(song)
-                index = index + 1
-
     return array
 
 
@@ -121,9 +119,9 @@ def search_by_title():
 
     songs = all_songs_instance.find_song_by_title(query)
     all_songs = convert_to_json(songs)
-    # remove_duplicates(all_songs)
+    songs = remove_duplicates(all_songs)
 
-    return {'songs': all_songs}
+    return {'songs': songs}
 
 
 @bp.route('/populate')
@@ -207,6 +205,9 @@ def get_files(folder):
     songs = convert_to_json(songs_obj)
     # remove_duplicates(songs)
 
+    for song in songs:
+        song['artists'] = song['artists'].split(', ')
+
     count = len(songs)
     return {'count': count, 'all_files': songs, 'folder_name': folder_name, 'url_safe_name': folder}
 
@@ -222,7 +223,7 @@ def get_folder_artists(folder):
     artists = []
 
     for song in without_duplicates:
-        this_artists = song['artists']
+        this_artists = song['artists'].split(', ')
 
         for artist in this_artists:
             if artist not in artists:
@@ -230,10 +231,11 @@ def get_folder_artists(folder):
 
     final_artists = []
 
-    for artist in artists[0: 9]:
+    for artist in artists[:15]:
         artist_obj = artist_instance.find_artists_by_name(artist)
 
-        final_artists.append(convert_to_json(artist_obj))
+        if artist_obj != []:
+            final_artists.append(convert_to_json(artist_obj))
 
     return {'artists': final_artists}
 
@@ -256,7 +258,7 @@ def populate_images():
     artists = []
 
     for song in songs_array:
-        this_artists = song['artists']
+        this_artists = song['artists'].split(', ')
 
         for artist in this_artists:
             if artist not in artists:
@@ -272,10 +274,10 @@ def populate_images():
             data = response.json()
 
             try:
-                image_path = data['data'][0]['picture_medium']
+                image_path = data['data'][0]['picture_xl']
             except:
                 image_path = None
-            
+
             if image_path is not None:
                 try:
                     save_image(image_path, file_path)
@@ -288,8 +290,69 @@ def populate_images():
                     print('saved image for: {}'.format(artist))
                 except:
                     print("error saving image for {}".format(artist))
+        else:
+            artist_obj = {
+                'name': artist,
+                'image': 'http://localhost:{}/{}'.format(PORT, urllib.parse.quote(absolute_path))
+            }
+
+            artist_instance.insert_artist(artist_obj)
+            print('already exists for: {}'.format(artist))
 
     artists_in_db = artist_instance.get_all_artists()
     artists_in_db_array = convert_to_json(artists_in_db)
 
     return {'artists': artists_in_db_array}
+
+
+@bp.route("/artist")
+def getArtistData():
+    artist = urllib.parse.unquote(request.args.get('q'))
+    # artist = "Bob Marley"
+    artist_obj = artist_instance.find_artists_by_name(artist)
+    artist_obj_json = convert_to_json(artist_obj)
+    print(artist_obj_json)
+
+    def getArtistSongs():
+        songs = all_songs_instance.find_songs_by_artist(artist)
+        songs_array = convert_to_json(songs)
+
+        return songs_array
+
+    artist_songs = getArtistSongs()
+    songs = remove_duplicates(artist_songs)
+
+    def getArtistAlbums():
+        artist_albums = []
+        albums_with_count = []
+
+        albums = all_songs_instance.find_songs_by_album_artist(artist)
+        albums_array = convert_to_json(albums)
+
+        for song in songs:
+            song['artists'] = song['artists'].split(', ')
+
+        for song in albums_array:
+            if song['album'] not in artist_albums:
+                artist_albums.append(song['album'])
+
+        for album in artist_albums:
+            count = 0
+            length = 0
+
+            for song in artist_songs:
+                if song['album'] == album:
+                    count = count + 1
+                    length = length + song['length']
+
+            album_ = {
+                "title": album,
+                "count": count,
+                "length": length
+            }
+
+            albums_with_count.append(album_)
+
+        return albums_with_count
+
+    return {'artist': artist_obj_json, 'songs': songs, 'albums': getArtistAlbums()}
