@@ -1,20 +1,34 @@
+from ctypes import POINTER
 import os
-import json
+import re
 import requests
-from io import BytesIO
-from PIL import Image
 
-from bson import json_util
+
 
 from pathlib import Path
 import urllib
 
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC, MutagenError
+from requests.api import get
 
 from app.models import Folders, Artists, AllSongs
+from app.configs import default_configs
 
 from flask import Blueprint, request
+
+from app.helpers import (
+    getTags,
+    # music_dirs,
+    PORT,
+    convert_to_json,
+    remove_duplicates,
+    save_image,
+    isValidFile,
+    getFolderContents,
+    create_config_dir,
+    extract_thumb
+)
 
 bp = Blueprint('api', __name__, url_prefix='')
 
@@ -22,93 +36,12 @@ artist_instance = Artists()
 folder_instance = Folders()
 all_songs_instance = AllSongs()
 
+def main_whatever():
+    create_config_dir()
+    # extract_thumb("/home/cwilvx/Music/a.flac")
+    extract_thumb("/home/cwilvx/Music/a.mp3")
 
-music_dir = os.environ.get("music_dir")
-PORT = os.environ.get("PORT")
-
-
-def getTags(full_path, audio, image_path, folder):
-    try:
-        artists = audio['artist'][0]
-    except KeyError:
-        try:
-            artists = audio['TPE1'][0]
-        except:
-            artists = 'Unknown'
-    except IndexError:
-        artists = 'Unknown'
-
-    try:
-        album_artist = audio['albumartist'][0]
-    except KeyError:
-        try:
-            album_artist = audio['TPE2'][0]
-        except:
-            album_artist = 'Unknown'
-    except IndexError:
-        album_artist = 'Unknown'
-
-    try:
-        title = audio['title'][0]
-    except KeyError:
-        try:
-            title = audio['TIT2'][0]
-        except:
-            title = 'Unknown'
-    except IndexError:
-        title = 'Unknown'
-
-    try:
-        album = audio['album'][0]
-    except KeyError:
-        try:
-            album = audio['TALB'][0]
-        except:
-            album = "Unknown"
-    except IndexError:
-        album = "Unknown"
-
-    try:
-        genre = audio['genre'][0]
-    except KeyError:
-        try:
-            genre = audio['TCON'][0]
-        except:
-            genre = "Unknown"
-    except IndexError:
-        genre = "Unknown"
-
-    tags = {
-        'filepath': full_path.replace(music_dir, ''),
-        'folder': folder,
-        'title': title,
-        'artists': artists,
-        'album_artist': album_artist,
-        'album': album,
-        'genre': genre,
-        'length': round(audio.info.length),
-        'bitrate': audio.info.bitrate,
-        'image': image_path
-    }
-    all_songs_instance.insert_song(tags)
-
-
-def convert_to_json(array):
-    songs = []
-
-    for song in array:
-        json_song = json.dumps(song, default=json_util.default)
-        loaded_song = json.loads(json_song)
-        del loaded_song['_id']
-
-        songs.append(loaded_song)
-
-    return songs
-
-
-def remove_duplicates(array):
-    return array
-
+main_whatever()
 
 @bp.route('/search')
 def search_by_title():
@@ -126,55 +59,74 @@ def search_by_title():
 
 @bp.route('/populate')
 def populate():
-    folders = os.listdir(music_dir)
+    folders = []
+
+    for dir in default_configs['dirs']:
+        entries = os.scandir(dir)
+
+        for entry in entries:
+            if entry.is_dir():
+                folders.append(entry.path)
 
     for folder in folders:
-        folder_name = urllib.parse.unquote(folder)
+        print(folder)
 
-        dir = music_dir + folder_name
 
-        for path in Path(dir).rglob('*.flac'):
-            print("processing: " + path.name)
-            image_absolute_path = folder_name + '/.thumbnails/' + \
-                path.name.replace('.flac', '.jpg')
-            image_path = music_dir + image_absolute_path
+    return "heheee"
 
-            if os.path.exists(image_path):
-                url_compatible_image_url = urllib.parse.quote(
-                    image_absolute_path)
-                image_url = 'http://localhost:{}/{}'.format(
-                    PORT, url_compatible_image_url)
-            try:
-                audio = FLAC(path)
-                file_path = path.resolve().as_posix()
-                audio_url = 'http://localhost:{}/{}'.format(
-                    PORT, urllib.parse.quote(file_path))
-                getTags(audio_url, audio, image_url, folder)
 
-            except(KeyError, MutagenError):
-                pass
 
-        for path in Path(dir).rglob('*.mp3'):
-            print("processing: " + path.name)
-            image_absolute_path = folder_name + '/.thumbnails/' + \
-                path.name.replace('.mp3', '.jpg')
-            image_path = music_dir + image_absolute_path
 
-            if os.path.exists(image_path):
-                url_compatible_image_url = urllib.parse.quote(
-                    image_absolute_path)
-                image_url = 'http://localhost:{}/{}'.format(
-                    PORT, url_compatible_image_url)
 
-            try:
-                audio = MP3(path)
-                audio_url = 'http://localhost:{}/{}'.format(
-                    PORT, urllib.parse.quote(file_path))
-                getTags(audio_url, audio, image_url, folder)
-            except(IndexError, MutagenError):
-                pass
 
-    return {'data': 'completed'}
+
+        # folder_name = urllib.parse.unquote(folder)
+
+        # dir = music_dir + folder_name
+
+        # for path in Path(folder).rglob('*.flac'):
+        #     print("processing: " + path.name)
+
+            # image_absolute_path = folder_name + '/.thumbnails/' + \
+            #     path.name.replace('.flac', '.jpg')
+            # image_path = music_dir + image_absolute_path
+
+            # if os.path.exists(image_path):
+            #     url_compatible_image_url = urllib.parse.quote(
+            #         image_absolute_path)
+            #     image_url = 'http://localhost:{}/{}'.format(
+            #         PORT, url_compatible_image_url)
+            # try:
+            #     audio = FLAC(path)
+            #     file_path = path.resolve().as_posix()
+            #     audio_url = 'http://localhost:{}/{}'.format(
+            #         PORT, urllib.parse.quote(file_path))
+            #     getTags(audio_url, audio, image_url, folder)
+
+            # except(KeyError, MutagenError):
+            #     pass
+
+        # for path in Path(dir).rglob('*.mp3'):
+        #     print("processing: " + path.name)
+        #     image_absolute_path = folder_name + '/.thumbnails/' + \
+        #         path.name.replace('.mp3', '.jpg')
+        #     image_path = music_dir + image_absolute_path
+
+        #     if os.path.exists(image_path):
+        #         url_compatible_image_url = urllib.parse.quote(
+        #             image_absolute_path)
+        #         image_url = 'http://localhost:{}/{}'.format(
+        #             PORT, url_compatible_image_url)
+
+        #     try:
+        #         audio = MP3(path)
+        #         audio_url = 'http://localhost:{}/{}'.format(
+        #             PORT, urllib.parse.quote(file_path))
+        #         getTags(audio_url, audio, image_url, folder)
+        #     except(IndexError, MutagenError):
+        #         pass
+
+    # return {'data': 'completed'}
 
 
 @bp.route("/")
@@ -239,11 +191,6 @@ def get_folder_artists(folder):
 
     return {'artists': final_artists}
 
-
-def save_image(url, path):
-    response = requests.get(url)
-    img = Image.open(BytesIO(response.content))
-    img.save(path, 'JPEG')
 
 
 @bp.route("/populate/images")
@@ -356,3 +303,32 @@ def getArtistData():
         return albums_with_count
 
     return {'artist': artist_obj_json, 'songs': songs, 'albums': getArtistAlbums()}
+
+
+@bp.route("/tree")
+def getFolderTree():
+    requested_dir = request.args.get('folder')
+    dir_content = os.scandir(requested_dir)
+
+    folders = []
+    files = []
+
+    for entry in dir_content:
+        if entry.is_dir():
+            folders.append(entry.path)
+
+        # print(entry)
+
+        if entry.is_file():
+            if isValidFile(entry.name) == True:
+                # print(entry.name)
+                files.append(getFolderContents(entry.path, requested_dir))
+
+    dir_content.close()
+
+    return {"requested": requested_dir, "files": files, "folders": folders}
+
+
+
+
+# @bp.route('/folder')

@@ -2,6 +2,9 @@ import os, sys, logging, time
 
 from io import BytesIO
 from pathlib import Path
+
+import PIL
+
 from watchdog import observers
 
 from watchdog.observers import Observer
@@ -21,6 +24,7 @@ def updateThumbnails():
     print("Updating thumbnails ...")
 
     for folder in folders:
+        print(folder)
         try:
             dir = music_dir + folder
             thumbnail_folder = dir + "/"+ ".thumbnails"
@@ -44,7 +48,10 @@ def updateThumbnails():
                 image = Image.open(BytesIO(album_art))
 
                 if not os.path.exists(image_path):
+                    try:
                         image.save(image_path, 'JPEG')
+                    except OSError:
+                        image.convert('RGB').save(image_path, 'JPEG')
 
             for song in Path(dir).rglob('*.mp3'):
                 try:
@@ -58,6 +65,8 @@ def updateThumbnails():
                     pass
         except NotADirectoryError:
             pass
+            
+        print("done")
 
     print("Done in: %s seconds" % round((time.time() - start_time), 1))
 

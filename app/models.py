@@ -67,3 +67,10 @@ class AllSongs(Mongo):
 
     def find_songs_by_album_artist(self, query):
         return self.collection.find({'album_artist': {'$regex': query, '$options': 'i'}})
+
+    def remove_song_by_filepath(self, filepath):
+        try:
+            self.collection.remove({'filepath': filepath})
+            return True
+        except:
+            return False

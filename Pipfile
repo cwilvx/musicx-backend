@@ -11,9 +11,11 @@ mutagen = "*"
 pymongo = "*"
 click = "*"
 requests = "*"
+watchdog = "*"
 
 [dev-packages]
 autopep8 = "*"
+ipykernel = "*"
 
 [requires]
 python_version = "3.8"

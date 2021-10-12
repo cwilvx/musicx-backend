@@ -1,0 +1,220 @@
+from genericpath import exists
+import os
+import json
+import requests
+import urllib
+import random, string
+
+from mutagen.mp3 import MP3
+from mutagen.id3 import ID3
+from mutagen.flac import FLAC
+
+from bson import json_util
+
+from io import BytesIO
+from PIL import Image
+
+music_dir = os.environ.get("music_dir")
+music_dirs = os.environ.get("music_dirs")
+
+home_dir = os.path.expanduser('~')
+app_dir = home_dir + '/.shit'
+
+
+PORT = os.environ.get("PORT")
+
+def generate_random_file_name():
+    letters = string.ascii_lowercase
+    gen_string = ''.join(random.choice(letters) for i in range(10))
+
+    img_path = app_dir + "/images/thumbnails/{}.jpg".format(gen_string)
+    print(img_path)
+
+    if os.path.exists(img_path):
+        generate_random_file_name()
+
+    return img_path
+
+def extract_thumb(path):
+    if path.endswith('.flac'):
+        audio = FLAC(path)
+        album_art = audio.pictures[0].data
+    elif path.endswith('.mp3'):
+        audio = ID3(path)
+        album_art = audio.getall('APIC')[0].data
+    
+    img_path = generate_random_file_name()
+    img = Image.open(BytesIO(album_art))
+
+    try:
+      img.save(img_path, 'JPEG')
+    except OSError:
+        img.convert('RGB'.save(img_path, 'JPEG'))
+
+    return img_path
+
+
+def getTags(full_path, audio, folder):
+    try:
+        artists = audio['artist'][0]
+    except KeyError:
+        try:
+            artists = audio['TPE1'][0]
+        except:
+            artists = 'Unknown'
+    except IndexError:
+        artists = 'Unknown'
+
+    try:
+        album_artist = audio['albumartist'][0]
+    except KeyError:
+        try:
+            album_artist = audio['TPE2'][0]
+        except:
+            album_artist = 'Unknown'
+    except IndexError:
+        album_artist = 'Unknown'
+
+    try:
+        title = audio['title'][0]
+    except KeyError:
+        try:
+            title = audio['TIT2'][0]
+        except:
+            title = 'Unknown'
+    except IndexError:
+        title = 'Unknown'
+
+    try:
+        album = audio['album'][0]
+    except KeyError:
+        try:
+            album = audio['TALB'][0]
+        except:
+            album = "Unknown"
+    except IndexError:
+        album = "Unknown"
+
+    try:
+        genre = audio['genre'][0]
+    except KeyError:
+        try:
+            genre = audio['TCON'][0]
+        except:
+            genre = "Unknown"
+    except IndexError:
+        genre = "Unknown"
+
+    img_path = extract_thumb(full_path)
+    
+    tags = {
+        'filepath': full_path.replace(music_dir, ''),
+        'folder': folder,
+        'title': title,
+        'artists': artists,
+        'album_artist': album_artist,
+        'album': album,
+        'genre': genre,
+        'length': round(audio.info.length),
+        'bitrate': audio.info.bitrate,
+        'image': img_path
+    }
+
+    # all_songs_instance.insert_song(tags)
+    return tags
+
+
+def convert_to_json(array):
+    songs = []
+
+    for song in array:
+        json_song = json.dumps(song, default=json_util.default)
+        loaded_song = json.loads(json_song)
+        del loaded_song['_id']
+
+        songs.append(loaded_song)
+
+    return songs
+
+
+def remove_duplicates(array):
+    return array
+
+
+def save_image(url, path):
+    response = requests.get(url)
+    img = Image.open(BytesIO(response.content))
+    img.save(path, 'JPEG')
+
+
+def isValidFile(filename):
+    if filename.endswith('.flac') or filename.endswith('.mp3'):
+        return True
+    else:
+        return False
+
+
+def isValidAudioFrom(folder):
+    folder_content = os.scandir(folder)
+    files = []
+
+    for entry in folder_content:
+        if isValidFile(entry.name) == True:
+            file = {
+                "path": entry.path,
+                "name": entry.name
+            }
+
+            files.append(file)
+
+    return files
+
+def getFolderContents(filepath, folder):
+    # print(filepath)
+    
+    folder_name = urllib.parse.unquote(folder)
+
+    path = filepath
+    name = filepath.split('/')[-1]
+    tags = {}
+
+    if name.endswith('.flac'):
+        print(name)
+        image_path = folder_name + '/.thumbnails/' + \
+            name.replace('.flac', '.jpg')
+        audio = FLAC(path)
+
+    if name.endswith('.mp3'):
+        image_path = folder_name + '/.thumbnails/' + \
+            name.replace('.mp3', '.jpg')
+        audio = MP3(path)
+    
+    abslt_path = urllib.parse.quote(path.replace(music_dir, ''))
+
+
+    if os.path.exists(image_path):
+        img_url = 'http://localhost:{}/{}'.format(
+            PORT,
+            urllib.parse.quote(image_path.replace(music_dir, ''))
+        )
+
+    try:
+        audio_url = 'http://localhost:{}/{}'.format(
+            PORT, abslt_path
+        )
+        tags = getTags(audio_url, audio, img_url, folder_name)
+    except:
+        pass
+
+    return tags
+
+
+def create_config_dir():
+    home_dir = os.path.expanduser('~')
+    config_folder = home_dir + "/.shit"
+
+    dirs = ["", "/images", "/images/artists", "/images/thumbnails"]
+
+    for dir in dirs:
+        if not os.path.exists(config_folder + dir):
+            os.makedirs(config_folder + dir)
