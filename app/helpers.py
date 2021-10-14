@@ -14,6 +14,11 @@ from bson import json_util
 from io import BytesIO
 from PIL import Image
 
+from app.models import AllSongs
+from app.configs import default_configs
+
+all_songs_instance = AllSongs()
+
 music_dir = os.environ.get("music_dir")
 music_dirs = os.environ.get("music_dirs")
 
@@ -28,7 +33,7 @@ def generate_random_file_name():
     gen_string = ''.join(random.choice(letters) for i in range(10))
 
     img_path = app_dir + "/images/thumbnails/{}.jpg".format(gen_string)
-    print(img_path)
+    # print(img_path)
 
     if os.path.exists(img_path):
         generate_random_file_name()
@@ -38,23 +43,35 @@ def generate_random_file_name():
 def extract_thumb(path):
     if path.endswith('.flac'):
         audio = FLAC(path)
-        album_art = audio.pictures[0].data
+        try:
+            album_art = audio.pictures[0].data
+        except IndexError:
+            album_art = None
     elif path.endswith('.mp3'):
         audio = ID3(path)
-        album_art = audio.getall('APIC')[0].data
-    
-    img_path = generate_random_file_name()
-    img = Image.open(BytesIO(album_art))
+        try:
+            album_art = audio.getall('APIC')[0].data
+        except IndexError:
+            album_art = None
 
-    try:
-      img.save(img_path, 'JPEG')
-    except OSError:
-        img.convert('RGB'.save(img_path, 'JPEG'))
+    if album_art is not None:
+        img_path = generate_random_file_name()
+        img = Image.open(BytesIO(album_art))
 
-    return img_path
+        try:
+            img.save(img_path, 'JPEG')
+        except OSError:
+            img.convert('RGB'.save(img_path, 'JPEG'))
+
+        return img_path
 
 
-def getTags(full_path, audio, folder):
+def getTags(full_path, folder):
+    if full_path.endswith('.flac'):
+        audio = FLAC(full_path)
+    elif full_path.endswith('.mp3'):
+        audio = MP3(full_path)
+
     try:
         artists = audio['artist'][0]
     except KeyError:
@@ -108,18 +125,19 @@ def getTags(full_path, audio, folder):
     img_path = extract_thumb(full_path)
     
     tags = {
-        'filepath': full_path.replace(music_dir, ''),
-        'folder': folder,
-        'title': title,
-        'artists': artists,
-        'album_artist': album_artist,
-        'album': album,
-        'genre': genre,
-        'length': round(audio.info.length),
-        'bitrate': audio.info.bitrate,
-        'image': img_path
+        "filepath": full_path,
+        "folder": folder,
+        "title": title,
+        "artists": artists,
+        "album_artist": album_artist,
+        "album": album,
+        "genre": genre,
+        "length": round(audio.info.length),
+        "bitrate": audio.info.bitrate,
+        "image": img_path
     }
-
+    # print(tags)
+    
     # all_songs_instance.insert_song(tags)
     return tags
 
@@ -130,12 +148,18 @@ def convert_to_json(array):
     for song in array:
         json_song = json.dumps(song, default=json_util.default)
         loaded_song = json.loads(json_song)
-        del loaded_song['_id']
+        # del loaded_song['_id']
 
         songs.append(loaded_song)
 
     return songs
 
+def get_folders():
+    folders = []
+    
+    for dir in default_configs['dirs']:
+        entry = os.scandir(dir)
+        folders.append(entry)
 
 def remove_duplicates(array):
     return array

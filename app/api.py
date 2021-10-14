@@ -1,6 +1,8 @@
 from ctypes import POINTER
+import json
 import os
 import re
+from bson import json_util
 import requests
 
 
@@ -8,16 +10,18 @@ import requests
 from pathlib import Path
 import urllib
 
-from mutagen.mp3 import MP3
-from mutagen.flac import FLAC, MutagenError
-from requests.api import get
+# from mutagen.mp3 import MP3
+from mutagen.flac import MutagenError
+# from requests.api import get
 
-from app.models import Folders, Artists, AllSongs
+from app.models import AllSongs, Folders, Artists
 from app.configs import default_configs
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_from_directory
 
 from app.helpers import (
+    all_songs_instance,
+    get_folders,
     getTags,
     # music_dirs,
     PORT,
@@ -27,14 +31,14 @@ from app.helpers import (
     isValidFile,
     getFolderContents,
     create_config_dir,
-    extract_thumb
+    extract_thumb,
+    home_dir
 )
 
 bp = Blueprint('api', __name__, url_prefix='')
 
 artist_instance = Artists()
 folder_instance = Folders()
-all_songs_instance = AllSongs()
 
 def main_whatever():
     create_config_dir()
@@ -64,21 +68,40 @@ def populate():
     for dir in default_configs['dirs']:
         entries = os.scandir(dir)
 
+        # base_url = "http://localhost:{}{}".format(
+        #     PORT,
+        #     dir
+        # )
+        # print(base_url)
+
         for entry in entries:
             if entry.is_dir():
                 folders.append(entry.path)
 
     for folder in folders:
-        print(folder)
-
-
+        for entry in os.scandir(folder):
+            if entry.is_file() and isValidFile(entry.name):
+                try:
+                    getTags(entry.path, folder)
+                except MutagenError:
+                    pass
     return "heheee"
 
 
 
 
+@bp.route('/file')
+def get_file():
+    file_id = request.args.get('id')
 
+    song_obj = all_songs_instance.get_song_by_id(file_id)
+    json_song = json.dumps(song_obj, default=json_util.default)
+    loaded_song = json.loads(json_song)
 
+    filepath = loaded_song['filepath'].split('/')[-1]
+    print(filepath)
+
+    return send_from_directory(loaded_song['folder'], filepath)
 
         # folder_name = urllib.parse.unquote(folder)
 
@@ -131,22 +154,19 @@ def populate():
 
 @bp.route("/")
 def get_folders():
-    folders = os.listdir(music_dir)
-    folders_array = []
+    folders = []
+    files = []
+    
+    for entry in os.scandir(home_dir):
+        if entry.is_dir():
+            dir_name = entry.name
+            if not dir_name.startswith("."):
+                folders.append(entry.path)
+        elif entry.is_file():
+            if isValidFile(entry.name):
+                files.append(entry.path)
 
-    for folder in folders:
-        if os.path.isdir(music_dir + folder) and folder.startswith('.') == False:
-            folder_obj = {
-                'name': folder,
-                'url': urllib.parse.quote(folder),
-            }
-
-            folders_array.append(folder_obj)
-    return {
-        'server_port': 'http://localhost:{}'.format(PORT),
-        'type': 'folder',
-        'all_folders': folders_array
-    }
+    return {'folders': folders, 'files': files}
 
 
 @bp.route("/<folder>")
@@ -316,12 +336,8 @@ def getFolderTree():
     for entry in dir_content:
         if entry.is_dir():
             folders.append(entry.path)
-
-        # print(entry)
-
         if entry.is_file():
             if isValidFile(entry.name) == True:
-                # print(entry.name)
                 files.append(getFolderContents(entry.path, requested_dir))
 
     dir_content.close()

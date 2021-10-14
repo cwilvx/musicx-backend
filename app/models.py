@@ -43,9 +43,12 @@ class AllSongs(Mongo):
         super(AllSongs, self).__init__('ALL_SONGS')
         self.collection = self.db['ALL_SONGS']
 
-    def drop_db(self):
-        self.collection.drop()
-       
+    # def drop_db(self):
+    #     self.collection.drop()
+    
+    def get_song_by_id(self, file_id):
+        return self.collection.find_one({'_id': ObjectId(file_id)})
+
     def insert_song(self, song_obj):
         self.collection.update(song_obj, song_obj, upsert=True)
 

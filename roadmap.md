@@ -17,6 +17,7 @@
 - [ ] Write a multithreaded file server
 - [ ] Add support for WAV files
 - [ ] Support multiple folders
+- [ ] Compress thumbnails
 
 # Features +
 ## Needed features
