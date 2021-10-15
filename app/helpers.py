@@ -138,7 +138,7 @@ def getTags(full_path, folder):
     }
     # print(tags)
     
-    # all_songs_instance.insert_song(tags)
+    all_songs_instance.insert_song(tags)
     return tags
 
 

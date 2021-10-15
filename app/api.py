@@ -338,7 +338,11 @@ def getFolderTree():
             folders.append(entry.path)
         if entry.is_file():
             if isValidFile(entry.name) == True:
-                files.append(getFolderContents(entry.path, requested_dir))
+                songs_array = all_songs_instance.find_songs_by_folder(requested_dir)
+                songs = convert_to_json(songs_array)
+                files = songs
+                # files.append("haa")
+                # files.append(getFolderContents(entry.path, requested_dir))
 
     dir_content.close()
 
