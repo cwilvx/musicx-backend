@@ -50,7 +50,7 @@ class AllSongs(Mongo):
         return self.collection.find_one({'_id': ObjectId(file_id)})
 
     def insert_song(self, song_obj):
-        print(song_obj['filepath'])
+        # print(song_obj['filepath'])
         self.collection.update({'filepath': song_obj['filepath']}, song_obj, upsert=True)
 
     def find_song_by_title(self, query):
@@ -71,6 +71,9 @@ class AllSongs(Mongo):
 
     def find_songs_by_album_artist(self, query):
         return self.collection.find({'album_artist': {'$regex': query, '$options': 'i'}})
+
+    def find_song_by_path(self, path):
+        return self.collection.find_one({'filepath': path})
 
     def remove_song_by_filepath(self, filepath):
         try:

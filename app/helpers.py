@@ -14,11 +14,10 @@ from bson import json_util
 from io import BytesIO
 from PIL import Image
 
-from app.models import AllSongs
+from app.models import AllSongs, Artists
 from app.configs import default_configs
 
 all_songs_instance = AllSongs()
-
 music_dir = os.environ.get("music_dir")
 music_dirs = os.environ.get("music_dirs")
 
@@ -28,17 +27,42 @@ app_dir = home_dir + '/.shit'
 
 PORT = os.environ.get("PORT")
 
-def generate_random_file_name():
-    letters = string.ascii_lowercase
-    gen_string = ''.join(random.choice(letters) for i in range(10))
+# def check_stuff(name, list):
+#     if os.path.splitext(name)[1].lower() in list:
+#         return True
+#     else:
+#         return False
 
-    img_path = app_dir + "/images/thumbnails/{}.jpg".format(gen_string)
-    # print(img_path)
+def run_fast_scandir(dir, ext):
+    subfolders = []
+    files = []
 
-    if os.path.exists(img_path):
-        generate_random_file_name()
+    for f in os.scandir(dir):
+        if f.is_dir() and not f.name.startswith('.'):
+            subfolders.append(f.path)
+        if f.is_file():
+            if os.path.splitext(f.name)[1].lower() in ext:
+                files.append(f.path)
 
-    return img_path
+    for dir in list(subfolders):
+        sf, f = run_fast_scandir(dir, ext)
+        subfolders.extend(sf)
+        files.extend(f)
+
+    return subfolders, files
+
+
+# def generate_random_file_name():
+#     letters = string.ascii_lowercase
+#     gen_string = ''.join(random.choice(letters) for i in range(10))
+
+#     img_path = app_dir + "/images/thumbnails/{}.jpg".format(gen_string)
+#     # print(img_path)
+
+#     if os.path.exists(img_path):
+#         generate_random_file_name()
+
+#     return img_path
 
 def extract_thumb(path):
     if path.endswith('.flac'):
@@ -55,18 +79,19 @@ def extract_thumb(path):
             album_art = None
 
     if album_art is not None:
-        img_path = generate_random_file_name()
+        img_path = app_dir + "/images/thumbnails/" + path.split('/')[-1].split('.')[0] + '.jpg'
         img = Image.open(BytesIO(album_art))
 
         try:
             img.save(img_path, 'JPEG')
         except OSError:
-            img.convert('RGB'.save(img_path, 'JPEG'))
-
+            try:
+                img.convert('RGB'.save(img_path, 'JPEG'))
+            except:
+                img_path = None
         return img_path
 
-
-def getTags(full_path, folder):
+def getTags(full_path):
     if full_path.endswith('.flac'):
         audio = FLAC(full_path)
     elif full_path.endswith('.mp3'):
@@ -126,7 +151,7 @@ def getTags(full_path, folder):
     
     tags = {
         "filepath": full_path,
-        "folder": folder,
+        "folder": os.path.dirname(full_path),
         "title": title,
         "artists": artists,
         "album_artist": album_artist,
@@ -136,11 +161,16 @@ def getTags(full_path, folder):
         "bitrate": audio.info.bitrate,
         "image": img_path
     }
-    # print(tags)
+    # print(tags['filepath'])
     
     all_songs_instance.insert_song(tags)
     return tags
 
+def convert_one_to_json(song):
+    json_song = json.dumps(song, default=json_util.default)
+    loaded_song = json.loads(json_song)
+
+    return loaded_song
 
 def convert_to_json(array):
     songs = []
@@ -203,7 +233,7 @@ def getFolderContents(filepath, folder):
     tags = {}
 
     if name.endswith('.flac'):
-        print(name)
+        # print(name)
         image_path = folder_name + '/.thumbnails/' + \
             name.replace('.flac', '.jpg')
         audio = FLAC(path)

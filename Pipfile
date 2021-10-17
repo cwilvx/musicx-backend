@@ -12,6 +12,7 @@ pymongo = "*"
 click = "*"
 requests = "*"
 watchdog = "*"
+progress = "*"
 
 [dev-packages]
 autopep8 = "*"

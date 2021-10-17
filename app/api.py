@@ -4,7 +4,7 @@ import os
 import re
 from bson import json_util
 import requests
-
+from progress.bar import Bar
 
 
 from pathlib import Path
@@ -21,7 +21,8 @@ from flask import Blueprint, request, send_from_directory
 
 from app.helpers import (
     all_songs_instance,
-    get_folders,
+    convert_one_to_json,
+    # get_folders,
     getTags,
     # music_dirs,
     PORT,
@@ -32,7 +33,8 @@ from app.helpers import (
     getFolderContents,
     create_config_dir,
     extract_thumb,
-    home_dir
+    home_dir, app_dir,
+    run_fast_scandir
 )
 
 bp = Blueprint('api', __name__, url_prefix='')
@@ -56,6 +58,13 @@ def search_by_title():
 
     songs = all_songs_instance.find_song_by_title(query)
     all_songs = convert_to_json(songs)
+
+    albums = all_songs_instance.find_songs_by_album(query)
+    all_songs.append(convert_to_json(albums))
+
+    artists = all_songs_instance.find_songs_by_artist(query)
+    all_songs.append(convert_to_json(artists))
+
     songs = remove_duplicates(all_songs)
 
     return {'songs': songs}
@@ -63,32 +72,33 @@ def search_by_title():
 
 @bp.route('/populate')
 def populate():
-    folders = []
+    files = run_fast_scandir(home_dir, [".flac", ".mp3"])[1]
 
-    for dir in default_configs['dirs']:
-        entries = os.scandir(dir)
+    bar = Bar('Processing', max=len(files))
+    for file in files:
+        file_in_db_obj = all_songs_instance.find_song_by_path(file)
+        song_obj = convert_one_to_json(file_in_db_obj)
 
-        # base_url = "http://localhost:{}{}".format(
-        #     PORT,
-        #     dir
-        # )
-        # print(base_url)
+        try:
+            image = song_obj['image']
+        except:
+            image = None
+        
+        if image is None:
+            try:
+                getTags(file)
+            except MutagenError:
+                pass
 
-        for entry in entries:
-            if entry.is_dir():
-                folders.append(entry.path)
+        if image is not None and not os.path.exists(image):
+            
+            extract_thumb(file)
 
-    for folder in folders:
-        for entry in os.scandir(folder):
-            if entry.is_file() and isValidFile(entry.name):
-                try:
-                    getTags(entry.path, folder)
-                except MutagenError:
-                    pass
-    return "heheee"
+        bar.next()
+    
+    bar.finish()
 
-
-
+    return {"info": "done"}
 
 @bp.route('/file')
 def get_file():
@@ -99,7 +109,6 @@ def get_file():
     loaded_song = json.loads(json_song)
 
     filepath = loaded_song['filepath'].split('/')[-1]
-    print(filepath)
 
     return send_from_directory(loaded_song['folder'], filepath)
 
@@ -152,43 +161,43 @@ def get_file():
     # return {'data': 'completed'}
 
 
-@bp.route("/")
-def get_folders():
-    folders = []
-    files = []
+# @bp.route("/")
+# def get_folders():
+#     folders = []
+#     files = []
     
-    for entry in os.scandir(home_dir):
-        if entry.is_dir():
-            dir_name = entry.name
-            if not dir_name.startswith("."):
-                folders.append(entry.path)
-        elif entry.is_file():
-            if isValidFile(entry.name):
-                files.append(entry.path)
+#     for entry in os.scandir(home_dir):
+#         if entry.is_dir():
+#             dir_name = entry.name
+#             if not dir_name.startswith("."):
+#                 folders.append(entry.path)
+#         elif entry.is_file():
+#             if isValidFile(entry.name):
+#                 files.append(entry.path)
 
-    return {'folders': folders, 'files': files}
-
-
-@bp.route("/<folder>")
-def get_files(folder):
-    folder_name = urllib.parse.unquote(folder)
-
-    songs_obj = all_songs_instance.find_songs_by_folder(folder_name)
-    songs = convert_to_json(songs_obj)
-    # remove_duplicates(songs)
-
-    for song in songs:
-        song['artists'] = song['artists'].split(', ')
-
-    count = len(songs)
-    return {'count': count, 'all_files': songs, 'folder_name': folder_name, 'url_safe_name': folder}
+#     return {'folders': folders, 'files': files}
 
 
-@bp.route("/<folder>/artists")
-def get_folder_artists(folder):
-    folder_name = urllib.parse.unquote(folder)
+# @bp.route("/<folder>")
+# def get_files(folder):
+#     folder_name = urllib.parse.unquote(folder)
 
-    songs = all_songs_instance.find_songs_by_folder(folder_name)
+#     songs_obj = all_songs_instance.find_songs_by_folder(folder_name)
+#     songs = convert_to_json(songs_obj)
+#     # remove_duplicates(songs)
+
+#     for song in songs:
+#         song['artists'] = song['artists'].split(', ')
+
+#     count = len(songs)
+#     return {'count': count, 'all_files': songs, 'folder_name': folder_name, 'url_safe_name': folder}
+
+
+@bp.route("/folder/artists")
+def get_folder_artists():
+    dir = request.args.get('dir')
+
+    songs = all_songs_instance.find_songs_by_folder(dir)
     songs_array = convert_to_json(songs)
     without_duplicates = remove_duplicates(songs_array)
 
@@ -215,9 +224,6 @@ def get_folder_artists(folder):
 
 @bp.route("/populate/images")
 def populate_images():
-    if not os.path.exists(music_dir + '.thumbnails'):
-        os.makedirs(music_dir + '.thumbnails')
-
     all_songs = all_songs_instance.get_all_songs()
     songs_array = convert_to_json(all_songs)
     remove_duplicates(songs_array)
@@ -231,9 +237,9 @@ def populate_images():
             if artist not in artists:
                 artists.append(artist)
 
+    bar = Bar('Processing images', max=len(artists))
     for artist in artists:
-        file_path = music_dir + '.thumbnails/' + artist + '.jpg'
-        absolute_path = '.thumbnails/' + artist + '.jpg'
+        file_path = app_dir + '/images/artists/' + artist + '.jpg'
 
         if not os.path.exists(file_path):
             url = 'https://api.deezer.com/search/artist?q={}'.format(artist)
@@ -249,36 +255,30 @@ def populate_images():
                 try:
                     save_image(image_path, file_path)
                     artist_obj = {
-                        'name': artist,
-                        'image': 'http://localhost:{}/{}'.format(PORT, urllib.parse.quote(absolute_path))
+                        'name': artist
                     }
 
                     artist_instance.insert_artist(artist_obj)
-                    print('saved image for: {}'.format(artist))
                 except:
-                    print("error saving image for {}".format(artist))
+                    pass
         else:
-            artist_obj = {
-                'name': artist,
-                'image': 'http://localhost:{}/{}'.format(PORT, urllib.parse.quote(absolute_path))
-            }
+            pass
 
-            artist_instance.insert_artist(artist_obj)
-            print('already exists for: {}'.format(artist))
+        bar.next()
+
+    bar.finish()
 
     artists_in_db = artist_instance.get_all_artists()
     artists_in_db_array = convert_to_json(artists_in_db)
 
-    return {'artists': artists_in_db_array}
+    return {'sample': artists_in_db_array[:25]}
 
 
 @bp.route("/artist")
 def getArtistData():
     artist = urllib.parse.unquote(request.args.get('q'))
-    # artist = "Bob Marley"
     artist_obj = artist_instance.find_artists_by_name(artist)
     artist_obj_json = convert_to_json(artist_obj)
-    print(artist_obj_json)
 
     def getArtistSongs():
         songs = all_songs_instance.find_songs_by_artist(artist)
@@ -334,15 +334,13 @@ def getFolderTree():
     files = []
 
     for entry in dir_content:
-        if entry.is_dir():
+        if entry.is_dir() and not entry.name.startswith('.'):
             folders.append(entry.path)
         if entry.is_file():
             if isValidFile(entry.name) == True:
                 songs_array = all_songs_instance.find_songs_by_folder(requested_dir)
                 songs = convert_to_json(songs_array)
                 files = songs
-                # files.append("haa")
-                # files.append(getFolderContents(entry.path, requested_dir))
 
     dir_content.close()
 
