@@ -1,34 +1,22 @@
-from ctypes import POINTER
-import json
 import os
-import re
-from bson import json_util
 import requests
-from progress.bar import Bar
-
-
-from pathlib import Path
 import urllib
 
-# from mutagen.mp3 import MP3
+
+from progress.bar import Bar
 from mutagen.flac import MutagenError
-# from requests.api import get
+from flask import Blueprint, request, send_from_directory
 
 from app.models import AllSongs, Folders, Artists
 from app.configs import default_configs
-
-from flask import Blueprint, request, send_from_directory
-
 from app.helpers import (
     all_songs_instance,
     convert_one_to_json,
     getTags,
-    PORT,
     convert_to_json,
     remove_duplicates,
     save_image,
     isValidFile,
-    getFolderContents,
     create_config_dir,
     extract_thumb,
     home_dir, app_dir,
