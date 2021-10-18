@@ -3,7 +3,6 @@ import os
 import json
 import requests
 import urllib
-import random, string
 
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3
@@ -14,7 +13,7 @@ from bson import json_util
 from io import BytesIO
 from PIL import Image
 
-from app.models import AllSongs, Artists
+from app.models import AllSongs
 from app.configs import default_configs
 
 all_songs_instance = AllSongs()
@@ -27,11 +26,6 @@ app_dir = home_dir + '/.shit'
 
 PORT = os.environ.get("PORT")
 
-# def check_stuff(name, list):
-#     if os.path.splitext(name)[1].lower() in list:
-#         return True
-#     else:
-#         return False
 
 def run_fast_scandir(dir, ext):
     subfolders = []
@@ -52,19 +46,12 @@ def run_fast_scandir(dir, ext):
     return subfolders, files
 
 
-# def generate_random_file_name():
-#     letters = string.ascii_lowercase
-#     gen_string = ''.join(random.choice(letters) for i in range(10))
-
-#     img_path = app_dir + "/images/thumbnails/{}.jpg".format(gen_string)
-#     # print(img_path)
-
-#     if os.path.exists(img_path):
-#         generate_random_file_name()
-
-#     return img_path
-
 def extract_thumb(path):
+    img_path = app_dir + "/images/thumbnails/" + path.split('/')[-1] + '.jpg'
+
+    if os.path.exists(img_path):
+        return path.split('/')[-1] + '.jpg'
+
     if path.endswith('.flac'):
         audio = FLAC(path)
         try:
@@ -79,7 +66,7 @@ def extract_thumb(path):
             album_art = None
 
     if album_art is not None:
-        img_path = app_dir + "/images/thumbnails/" + path.split('/')[-1].split('.')[0] + '.jpg'
+
         img = Image.open(BytesIO(album_art))
 
         try:
@@ -89,7 +76,8 @@ def extract_thumb(path):
                 img.convert('RGB'.save(img_path, 'JPEG'))
             except:
                 img_path = None
-        return img_path
+        return path.split('/')[-1] + '.jpg'
+
 
 def getTags(full_path):
     if full_path.endswith('.flac'):
@@ -148,10 +136,10 @@ def getTags(full_path):
         genre = "Unknown"
 
     img_path = extract_thumb(full_path)
-    
+
     tags = {
         "filepath": full_path,
-        "folder": os.path.dirname(full_path),
+        "folder": os.path.dirname(full_path).replace(home_dir, ""),
         "title": title,
         "artists": artists,
         "album_artist": album_artist,
@@ -161,10 +149,10 @@ def getTags(full_path):
         "bitrate": audio.info.bitrate,
         "image": img_path
     }
-    # print(tags['filepath'])
-    
+
     all_songs_instance.insert_song(tags)
     return tags
+
 
 def convert_one_to_json(song):
     json_song = json.dumps(song, default=json_util.default)
@@ -172,24 +160,26 @@ def convert_one_to_json(song):
 
     return loaded_song
 
+
 def convert_to_json(array):
     songs = []
 
     for song in array:
         json_song = json.dumps(song, default=json_util.default)
         loaded_song = json.loads(json_song)
-        # del loaded_song['_id']
 
         songs.append(loaded_song)
 
     return songs
 
+
 def get_folders():
     folders = []
-    
+
     for dir in default_configs['dirs']:
         entry = os.scandir(dir)
         folders.append(entry)
+
 
 def remove_duplicates(array):
     return array
@@ -223,9 +213,9 @@ def isValidAudioFrom(folder):
 
     return files
 
+
 def getFolderContents(filepath, folder):
-    # print(filepath)
-    
+
     folder_name = urllib.parse.unquote(folder)
 
     path = filepath
@@ -233,7 +223,6 @@ def getFolderContents(filepath, folder):
     tags = {}
 
     if name.endswith('.flac'):
-        # print(name)
         image_path = folder_name + '/.thumbnails/' + \
             name.replace('.flac', '.jpg')
         audio = FLAC(path)
@@ -242,9 +231,8 @@ def getFolderContents(filepath, folder):
         image_path = folder_name + '/.thumbnails/' + \
             name.replace('.mp3', '.jpg')
         audio = MP3(path)
-    
-    abslt_path = urllib.parse.quote(path.replace(music_dir, ''))
 
+    abslt_path = urllib.parse.quote(path.replace(music_dir, ''))
 
     if os.path.exists(image_path):
         img_url = 'http://localhost:{}/{}'.format(

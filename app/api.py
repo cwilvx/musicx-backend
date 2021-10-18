@@ -22,9 +22,7 @@ from flask import Blueprint, request, send_from_directory
 from app.helpers import (
     all_songs_instance,
     convert_one_to_json,
-    # get_folders,
     getTags,
-    # music_dirs,
     PORT,
     convert_to_json,
     remove_duplicates,
@@ -42,12 +40,13 @@ bp = Blueprint('api', __name__, url_prefix='')
 artist_instance = Artists()
 folder_instance = Folders()
 
+
 def main_whatever():
     create_config_dir()
-    # extract_thumb("/home/cwilvx/Music/a.flac")
-    extract_thumb("/home/cwilvx/Music/a.mp3")
+
 
 main_whatever()
+
 
 @bp.route('/search')
 def search_by_title():
@@ -83,7 +82,7 @@ def populate():
             image = song_obj['image']
         except:
             image = None
-        
+
         if image is None:
             try:
                 getTags(file)
@@ -91,106 +90,25 @@ def populate():
                 pass
 
         if image is not None and not os.path.exists(image):
-            
+
             extract_thumb(file)
 
         bar.next()
-    
+
     bar.finish()
 
     return {"info": "done"}
 
-@bp.route('/file')
-def get_file():
-    file_id = request.args.get('id')
 
+@bp.route('/file/<file_id>')
+def send_audio(file_id):
     song_obj = all_songs_instance.get_song_by_id(file_id)
-    json_song = json.dumps(song_obj, default=json_util.default)
-    loaded_song = json.loads(json_song)
+    loaded_song = convert_one_to_json(song_obj)
 
     filepath = loaded_song['filepath'].split('/')[-1]
+    print(loaded_song['folder'] + filepath)
 
-    return send_from_directory(loaded_song['folder'], filepath)
-
-        # folder_name = urllib.parse.unquote(folder)
-
-        # dir = music_dir + folder_name
-
-        # for path in Path(folder).rglob('*.flac'):
-        #     print("processing: " + path.name)
-
-            # image_absolute_path = folder_name + '/.thumbnails/' + \
-            #     path.name.replace('.flac', '.jpg')
-            # image_path = music_dir + image_absolute_path
-
-            # if os.path.exists(image_path):
-            #     url_compatible_image_url = urllib.parse.quote(
-            #         image_absolute_path)
-            #     image_url = 'http://localhost:{}/{}'.format(
-            #         PORT, url_compatible_image_url)
-            # try:
-            #     audio = FLAC(path)
-            #     file_path = path.resolve().as_posix()
-            #     audio_url = 'http://localhost:{}/{}'.format(
-            #         PORT, urllib.parse.quote(file_path))
-            #     getTags(audio_url, audio, image_url, folder)
-
-            # except(KeyError, MutagenError):
-            #     pass
-
-        # for path in Path(dir).rglob('*.mp3'):
-        #     print("processing: " + path.name)
-        #     image_absolute_path = folder_name + '/.thumbnails/' + \
-        #         path.name.replace('.mp3', '.jpg')
-        #     image_path = music_dir + image_absolute_path
-
-        #     if os.path.exists(image_path):
-        #         url_compatible_image_url = urllib.parse.quote(
-        #             image_absolute_path)
-        #         image_url = 'http://localhost:{}/{}'.format(
-        #             PORT, url_compatible_image_url)
-
-        #     try:
-        #         audio = MP3(path)
-        #         audio_url = 'http://localhost:{}/{}'.format(
-        #             PORT, urllib.parse.quote(file_path))
-        #         getTags(audio_url, audio, image_url, folder)
-        #     except(IndexError, MutagenError):
-        #         pass
-
-    # return {'data': 'completed'}
-
-
-# @bp.route("/")
-# def get_folders():
-#     folders = []
-#     files = []
-    
-#     for entry in os.scandir(home_dir):
-#         if entry.is_dir():
-#             dir_name = entry.name
-#             if not dir_name.startswith("."):
-#                 folders.append(entry.path)
-#         elif entry.is_file():
-#             if isValidFile(entry.name):
-#                 files.append(entry.path)
-
-#     return {'folders': folders, 'files': files}
-
-
-# @bp.route("/<folder>")
-# def get_files(folder):
-#     folder_name = urllib.parse.unquote(folder)
-
-#     songs_obj = all_songs_instance.find_songs_by_folder(folder_name)
-#     songs = convert_to_json(songs_obj)
-#     # remove_duplicates(songs)
-
-#     for song in songs:
-#         song['artists'] = song['artists'].split(', ')
-
-#     count = len(songs)
-#     return {'count': count, 'all_files': songs, 'folder_name': folder_name, 'url_safe_name': folder}
+    return send_from_directory(home_dir + loaded_song['folder'], filepath)
 
 
 @bp.route("/folder/artists")
@@ -219,7 +137,6 @@ def get_folder_artists():
             final_artists.append(convert_to_json(artist_obj))
 
     return {'artists': final_artists}
-
 
 
 @bp.route("/populate/images")
@@ -325,9 +242,16 @@ def getArtistData():
     return {'artist': artist_obj_json, 'songs': songs, 'albums': getArtistAlbums()}
 
 
-@bp.route("/tree")
+@bp.route("/")
 def getFolderTree():
-    requested_dir = request.args.get('folder')
+
+    req_dir = request.args.get('folder')
+
+    if req_dir is not None:
+        requested_dir = home_dir + req_dir
+    else:
+        requested_dir = home_dir
+
     dir_content = os.scandir(requested_dir)
 
     folders = []
@@ -335,18 +259,34 @@ def getFolderTree():
 
     for entry in dir_content:
         if entry.is_dir() and not entry.name.startswith('.'):
-            folders.append(entry.path)
+            files_in_dir = run_fast_scandir(entry.path, [".flac", ".mp3"])[1]
+            if len(files_in_dir) != 0:
+                dir = {
+                    "name": entry.name,
+                    "count": len(files_in_dir),
+                    "path": entry.path.replace(home_dir, "")
+                }
+
+                folders.append(dir)
         if entry.is_file():
             if isValidFile(entry.name) == True:
-                songs_array = all_songs_instance.find_songs_by_folder(requested_dir)
+                songs_array = all_songs_instance.find_songs_by_folder(req_dir)
                 songs = convert_to_json(songs_array)
                 files = songs
 
+    for file in files:
+        del file['filepath']
+
     dir_content.close()
 
-    return {"requested": requested_dir, "files": files, "folders": folders}
+    return {"requested": req_dir, "files": files, "folders": folders}
 
 
+@bp.route('/image/<image_id>')
+def send_image(image_id):
+    image_id = image_id.replace('.jpg', '')
 
+    song_obj = all_songs_instance.get_song_by_id(image_id)
+    loaded_song = convert_one_to_json(song_obj)
 
-# @bp.route('/folder')
+    return "hellow"
