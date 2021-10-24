@@ -1,4 +1,5 @@
 import os
+from re import sub
 import requests
 import urllib
 
@@ -59,33 +60,66 @@ def search_by_title():
 
 @bp.route('/populate')
 def populate():
-    files = run_fast_scandir(home_dir, [".flac", ".mp3"])[1]
+    sub_dirs, files = run_fast_scandir(home_dir, [".flac", ".mp3"])
 
-    bar = Bar('Processing', max=len(files))
-    for file in files:
-        file_in_db_obj = all_songs_instance.find_song_by_path(file)
-        song_obj = convert_one_to_json(file_in_db_obj)
+    # bar = Bar('Processing', max=len(files))
+    # for file in files:
+    #     file_in_db_obj = all_songs_instance.find_song_by_path(file)
+    #     song_obj = convert_one_to_json(file_in_db_obj)
 
-        try:
-            image = song_obj['image']
-        except:
-            image = None
+    #     try:
+    #         image = song_obj['image']
+    #     except:
+    #         image = None
 
-        if image is None:
-            try:
-                getTags(file)
-            except MutagenError:
-                pass
+    #     if image is None:
+    #         try:
+    #             getTags(file)
+    #         except MutagenError:
+    #             pass
 
-        if image is not None and not os.path.exists(image):
+    #     if image is not None and not os.path.exists(image):
 
-            extract_thumb(file)
+    #         extract_thumb(file)
 
-        bar.next()
+    #     bar.next()
 
-    bar.finish()
+    # bar.finish()
 
-    return {"info": "done"}
+    # dirs = []
+    # files = []
+
+    for dir in sub_dirs:
+        
+        files_in_dir = run_fast_scandir(dir, [".flac", ".mp3"])[1]
+
+        if len(files_in_dir) != 0:
+            dir_content = os.scandir(dir)
+            
+            for entry in dir_content:
+                dirs = []
+                files = []
+
+                if entry.is_dir() and not entry.name.startswith('.'):
+                    print(dir)
+                    files_in_dir = run_fast_scandir(entry.path, [".flac", ".mp3"])[1]
+
+                    if len(files_in_dir) != 0:
+                        dir_data = {
+                            "name": entry.name,
+                            "count": len(files_in_dir),
+                            "path": entry.path.replace(home_dir, "")
+                        }
+
+                        dirs.append(dir_data)
+
+                if entry.is_file():
+                    if isValidFile(entry.name) == True:
+                        files.append(entry.path)
+                
+                print(dirs)
+
+    return {"info": ''}
 
 
 @bp.route('/file/<file_id>')
@@ -256,10 +290,14 @@ def getFolderTree():
                 }
 
                 folders.append(dir)
+
         if entry.is_file():
             if isValidFile(entry.name) == True:
                 songs_array = all_songs_instance.find_songs_by_folder(req_dir)
                 songs = convert_to_json(songs_array)
+                for song in songs:
+                    song['artists'] = song['artists'].split(', ')
+
                 files = songs
 
     for file in files:
@@ -267,14 +305,25 @@ def getFolderTree():
 
     dir_content.close()
 
-    return {"requested": req_dir, "files": files, "folders": folders}
+    return {"requested": req_dir, "files": files[:25], "folders": folders}
 
 
-@bp.route('/image/<image_id>')
-def send_image(image_id):
-    image_id = image_id.replace('.jpg', '')
+@bp.route('/image/<img_type>/<image_id>')
+def send_image(img_type, image_id):
+    if img_type == "thumbnail":
+        song_obj = all_songs_instance.get_song_by_id(image_id)
+        loaded_song = convert_one_to_json(song_obj)
 
-    song_obj = all_songs_instance.get_song_by_id(image_id)
-    loaded_song = convert_one_to_json(song_obj)
+        img_dir = app_dir + "/images/thumbnails"
+        image = loaded_song['image']
 
-    return "hellow"
+    if img_type == "artist":
+        artist_obj = artist_instance.get_artist_by_id(image_id)
+        artist = convert_one_to_json(artist_obj)
+
+        img_dir = app_dir + "/images/artists"
+        
+        image = artist['name'] + ".jpg"
+        print(img_dir + image)
+    
+    return send_from_directory(img_dir, image)
